@@ -10,27 +10,62 @@ ribbon:
   ReadTimeout: 20000
   ConnectTimeout: 20000
 
-zuul:
-  ignoredServices: '*'
-  host:
-    connect-timeout-millis: 20000
-    socket-timeout-millis: 20000
-
-  routes:
-    account-service:
-      path: /accounts/**
-      serviceId: account-service
-      stripPrefix: false
-
-    bill-service:
-      path: /bills/**
-      serviceId: bill-service
-      stripPrefix: false
-
-    deposit-service:
-      path: /deposits/**
-      serviceId: deposit-service
-      stripPrefix: false
+#zuul:
+#  ignoredServices: '*'
+#  host:
+#    connect-timeout-millis: 20000
+#    socket-timeout-millis: 20000
+#
+#  routes:
+#    account-service:
+#      path: /accounts/**
+#      serviceId: account-service
+#      stripPrefix: false
+#
+#    bill-service:
+#      path: /bills/**
+#      serviceId: bill-service
+#      stripPrefix: false
+#
+#    deposit-service:
+#      path: /deposits/**
+#      serviceId: deposit-service
+#      stripPrefix: false
 
 server:
   port: 8989
+
+spring:
+  cloud:
+    gateway:
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 10
+            redis-rate-limiter.burstCapacity: 20
+      server:
+        webflux:
+          routes:
+            - id: account-service
+              uri: http://account-service:8081
+              predicates:
+                - Path=/accounts/**
+              filters:
+                - AddRequestHeader=X-Request-Example, Gateway-Request
+                - AddResponseHeader=X-Response-Example, Gateway-Response
+
+            - id: bill-service
+              uri: http://bill-service:8082
+              predicates:
+                - Path=/bills/**
+              filters:
+                - AddRequestHeader=X-Request-Example, Gateway-Request
+                - AddResponseHeader=X-Response-Example, Gateway-Response
+
+            - id: deposit-service
+              uri: http://deposit-service:8083
+              predicates:
+                - Path=/deposits/**
+              filters:
+                - AddRequestHeader=X-Request-Example, Gateway-Request
+                - AddResponseHeader=X-Response-Example, Gateway-Response

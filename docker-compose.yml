@@ -1,0 +1,111 @@
+services:
+  config-service:
+    container_name: config-service
+    restart: on-failure
+    build: config-service
+    ports:
+      - "8001:8001"
+
+  registry:
+    container_name: registry
+    restart: on-failure
+    build: registry
+    ports:
+      - "8761:8761"
+    depends_on:
+      - config-service
+
+  gateway:
+    container_name: gateway
+    restart: on-failure
+    build: gateway
+    ports:
+      - "8989:8989"
+    depends_on:
+      - config-service
+      - registry
+
+  account-service:
+    container_name: account-service
+    restart: on-failure
+    build: account-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - config-service
+      - registry
+      - postgres
+
+  bill-service:
+    container_name: bill-service
+    restart: on-failure
+    build: bill-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - config-service
+      - registry
+      - postgres
+
+  deposit-service:
+    container_name: deposit-service
+    restart: on-failure
+    build: deposit-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - config-service
+      - registry
+      - postgres
+
+  notification-service:
+    container_name: notification-service
+    restart: on-failure
+    build: notification-service
+    depends_on:
+      - config-service
+      - registry
+
+  rabbitmq:
+    image: rabbitmq:4.1.2-management
+    hostname: rabbitmq
+    labels:
+      NAME: "rabbitmq"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    depends_on:
+      - config-service
+      - registry
+      - account-service
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pguser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_MULTIPLE_DATABASES: account_service_database,bill_service_database,deposit_service_database
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    ports:
+      - "5432:5432"
+    command: >
+      postgres -c max_connections=1000
+               -c shared_buffers=256MB
+               -c listen_addresses='*'
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: finance-network
+    driver: bridge

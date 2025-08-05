@@ -27,7 +27,7 @@ jar {
 }
 
 ext {
-    set('springCloudVersion', "Hoxton.SR1")
+    set('springCloudVersion', "2025.0.0")
 }
 
 
@@ -47,8 +47,10 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
-    implementation 'org.springframework.cloud:spring-cloud-starter-sleuth'
-    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-hystrix'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3'
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+//    implementation 'org.springframework.cloud:spring-cloud-starter-sleuth'
+//    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-hystrix'
     implementation 'org.postgresql:postgresql'
     testImplementation 'junit:junit'
 }

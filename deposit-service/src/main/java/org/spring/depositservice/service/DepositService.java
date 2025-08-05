@@ -1,0 +1,102 @@
+package org.spring.depositservice.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.spring.depositservice.contoller.dto.DepositRequestDTO;
+import org.spring.depositservice.contoller.dto.DepositResponseDTO;
+import org.spring.depositservice.entity.Deposit;
+import org.spring.depositservice.exception.DepositServiceException;
+import org.spring.depositservice.repository.DepositRepository;
+import org.spring.depositservice.rest.*;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+@Service
+public class DepositService {
+
+    private static final String TOPIC_EXCHANGE_DEPOSIT= "js.deposit.notify.exchange";
+    private static final String ROUTING_KEY_DEPOSIT= "js.key.deposit";
+
+    private final DepositRepository repository;
+
+    private final AccountServiceClient accountServiceClient;
+
+    private final BillServiceClient billServiceClient;
+
+    private final RabbitTemplate rabbitTemplate;
+
+    @Autowired
+    public DepositService(DepositRepository repository, AccountServiceClient accountServiceClient, BillServiceClient billServiceClient, RabbitTemplate rabbitTemplate) {
+        this.repository = repository;
+        this.accountServiceClient = accountServiceClient;
+        this.billServiceClient = billServiceClient;
+        this.rabbitTemplate = rabbitTemplate;
+    }
+
+    public DepositResponseDTO deposit(Long accountId, Long billId, BigDecimal amount) {
+        if (accountId == null && billId == null) {
+            throw new DepositServiceException("Account is null and Bill is null");
+        }
+
+        if (billId != null) {
+            BillResponseDTO billResponseDTO = billServiceClient.getBillById(billId);
+            BillRequestDTO billRequestDTO = createBillRequest(amount, billResponseDTO);
+
+            billServiceClient.update(billId, billRequestDTO);
+
+            AccountResponseDTO accountResponseDTO = accountServiceClient
+                    .getAccountById(billResponseDTO.getAccountId());
+
+            repository.save(new Deposit(accountResponseDTO.getEmail(), OffsetDateTime.now(), billId, amount));
+
+            return createResponse(amount, accountResponseDTO);
+        }
+
+        BillResponseDTO defaultBill =  getDefaultBill(accountId);
+        BillRequestDTO billRequestDTO = createBillRequest(amount, defaultBill);
+        billServiceClient.update(defaultBill.getBillId(), billRequestDTO);
+        AccountResponseDTO account = accountServiceClient.getAccountById(accountId);
+        repository.save(new Deposit(account.getEmail(), OffsetDateTime.now(), defaultBill.getBillId(), amount));
+
+        return createResponse(amount, account);
+    }
+
+    private DepositResponseDTO createResponse(BigDecimal amount, AccountResponseDTO accountResponseDTO) {
+        DepositResponseDTO depositResponseDTO = new DepositResponseDTO(amount, accountResponseDTO.getEmail());
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            rabbitTemplate.convertAndSend(
+                    TOPIC_EXCHANGE_DEPOSIT,
+                    ROUTING_KEY_DEPOSIT,
+                    objectMapper.writeValueAsString(depositResponseDTO));
+        } catch (JsonProcessingException e) {
+            throw new DepositServiceException("Can't send message to RabbitMQ");
+        }
+        return depositResponseDTO;
+    }
+
+    private BillRequestDTO createBillRequest(BigDecimal amount, BillResponseDTO billResponseDTO) {
+        BillRequestDTO billRequestDTO = new BillRequestDTO();
+
+        billRequestDTO.setAccountId(billResponseDTO.getAccountId());
+        billRequestDTO.setCreationDate(billResponseDTO.getCreationDate());
+        billRequestDTO.setIsDefault(billResponseDTO.getIsDefault());
+        billRequestDTO.setOverdraftEnabled(billResponseDTO.getOverdraftEnabled());
+        billRequestDTO.setAmount(billResponseDTO.getAmount().add(amount));
+
+        return billRequestDTO;
+    }
+
+    private BillResponseDTO getDefaultBill(Long accountId) {
+        return billServiceClient.getBillsByAccountId(accountId)
+                .stream()
+                .filter(BillResponseDTO::getIsDefault)
+                .findAny()
+                .orElseThrow(() ->
+                        new DepositServiceException("Unable to find default bill for account: " + accountId));
+    }
+}

@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: account-service
+  config:
+    import: "configserver:"
+  cloud:
+    config:
+      uri: http://config-service:8001
+      fail-fast: true
+      password: admin
+      username: user
+
+management:
+  endpoint:
+    health:
+      show-details: always
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health
